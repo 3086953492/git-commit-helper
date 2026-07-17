@@ -1,0 +1,4 @@
+interface:
+  display_name: "Git 提交助手"
+  short_description: "安全分析暂存改动并生成或执行规范化 Git 提交操作"
+  default_prompt: "Use $git-commit-helper to inspect the staged changes and safely generate or execute a Conventional Commit."
