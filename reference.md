@@ -62,6 +62,7 @@ docs: 补充生产部署步骤
 - staged 同时包含明显无关的多个主题。
 - 用户说“这些改动”，但当前目录存在多个可能仓库或多个独立 staged 批次。
 - 需要把 untracked 文件加入提交，但文件可能包含配置、凭据或本地数据。
+- 从 Windows 操作 WSL 仓库，但存在多个发行版且目标发行版无法从上下文确定。
 
 以下情况不重复确认：
 
@@ -76,5 +77,6 @@ docs: 补充生产部署步骤
 - message 没有描述 unstaged 内容。
 - `git diff --cached --check` 已通过。
 - 相关测试、构建或静态检查已完成。
-- 执行器隔离并校验 staged tree；仅在 commit、父关系与 symbolic HEAD 均未漂移时对原分支 ref 做 CAS 撤回，并发 HEAD 或分支切换时不自动改写引用。
+- 检查、测试、临时 index、hooks 与 commit 使用同一个 Git 运行环境，没有混用 Windows Git 和 WSL Git。
+- 当前平台执行器隔离并校验 staged tree；仅在 commit、父关系与 symbolic HEAD 均未漂移时对原分支 ref 做 CAS 撤回，并发 HEAD 或分支切换时不自动改写引用。
 - 执行成功后已回读 `%H%n%B` 和最终 status。
