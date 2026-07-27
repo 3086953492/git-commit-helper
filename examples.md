@@ -1,6 +1,48 @@
 # Examples
 
-## 1. `message-only`
+## 1. 先推断意图与影响
+
+假设 staged diff 把登录限流键从 `userID` 改为 `tenantID:userID`，并新增“不同租户不得共享登录配额”的测试。
+
+先在内部归纳：
+
+```text
+目标：阻止不同租户中相同用户 ID 互相占用登录配额
+行为变化：跨租户共享限流键 → 每个租户独立计数
+影响：一个租户的登录请求不再触发另一个租户的限流
+证据：限流键实现与跨租户隔离测试
+```
+
+再生成：
+
+```text
+fix(登录限流): 按租户隔离用户配额
+
+- 避免相同用户 ID 在不同租户间共享限流计数
+- 补充跨租户配额隔离的回归测试
+```
+
+不要写成“更新限流键并补充测试”，因为那只是实现清单。
+
+### 动机未知但结果唯一
+
+若 staged 只把默认分页数量从 20 改为 50，没有其他证据，不要编造“提升浏览效率”或“优化性能”，也不必询问。使用可证明的结果：
+
+```text
+chore(列表): 未指定分页数量时默认返回 50 条
+
+- 让未显式指定分页数量的列表每页默认返回 50 条
+```
+
+### 多个解释会改变提交语义
+
+若 staged 把公共 API 字段从 `price` 改为 `amount`，但无法判断这是有意的 breaking change，还是遗漏旧字段兼容层，只问一个问题：
+
+> 这次 `price` 改为 `amount` 是有意发布破坏性 API 变更，还是需要继续兼容旧字段 `price`？
+
+不要泛问用户“这批改动的意图是什么”。
+
+## 2. `message-only`
 
 用户：
 
@@ -9,12 +51,12 @@
 行为：读取 staged；若 staged 为空，再只读分析 unstaged/untracked。输出 message，不运行 `git add` 或 `git commit`。
 
 ```text
-fix(订单状态): 统一状态值格式
+fix(订单状态): 兼容格式不一致的状态值
 
-- 规范化状态值的空白与大小写处理
+- 状态值包含多余空白或大小写差异时仍映射到统一业务状态
 ```
 
-## 2. `command-only`
+## 3. `command-only`
 
 用户：
 
@@ -26,9 +68,9 @@ Windows PowerShell 使用单引号 here-string，避免 `$变量`、`$()` 和反
 
 ```powershell
 $message = @'
-fix(订单状态): 统一状态值格式
+fix(订单状态): 兼容格式不一致的状态值
 
-- 规范化状态值的空白与大小写处理
+- 状态值包含多余空白或大小写差异时仍映射到统一业务状态
 '@
 $messageBytes = [System.Text.Encoding]::UTF8.GetBytes($message.TrimEnd() + "`n")
 $messageBase64 = [Convert]::ToBase64String($messageBytes)
@@ -40,9 +82,9 @@ WSL/Linux/macOS 使用 quoted heredoc，delimiter 两侧的单引号会关闭变
 ```bash
 skill_root="${HOME}/.agents/skills/git-commit-helper"
 bash "$skill_root/scripts/commit.sh" --repository "." <<'COMMIT_MESSAGE'
-fix(订单状态): 统一状态值格式
+fix(订单状态): 兼容格式不一致的状态值
 
-- 规范化状态值的空白与大小写处理
+- 状态值包含多余空白或大小写差异时仍映射到统一业务状态
 COMMIT_MESSAGE
 ```
 
@@ -55,9 +97,9 @@ $distro = "Ubuntu"
 $repositoryWsl = "/home/mei/app"
 $skillRootWindows = Join-Path $HOME ".agents\skills\git-commit-helper"
 $message = @'
-fix(订单状态): 统一状态值格式
+fix(订单状态): 兼容格式不一致的状态值
 
-- 规范化状态值的空白与大小写处理
+- 状态值包含多余空白或大小写差异时仍映射到统一业务状态
 '@
 $messageBytes = [System.Text.Encoding]::UTF8.GetBytes($message.TrimEnd() + "`n")
 $messageBase64 = [Convert]::ToBase64String($messageBytes)
@@ -78,7 +120,7 @@ if ($LASTEXITCODE -ne 0) {
 
 不能确定 `$distro` 时先询问。不要把 `C:\...`、`\\wsl.localhost\...` 或 Windows 临时 index 直接传给 WSL Git，也不要用 Windows Git 提交已由 WSL Git 检查的 staged 内容。
 
-## 3. `execute-mode`
+## 4. `execute-mode`
 
 用户：
 
@@ -89,13 +131,14 @@ if ($LASTEXITCODE -ne 0) {
 行为：
 
 1. 只分析和验证 staged 的 `src/order.ts`。
-2. 不把 `README.md` 加入 staged。
-3. 在仓库所属 Git 环境中运行对应安全执行器。
-4. 回报 hash、完整 message 和剩余的 ` M README.md`。
+2. 结合测试、调用方或契约归纳这批订单改动的目的与影响。
+3. 不把 `README.md` 加入 staged。
+4. 在仓库所属 Git 环境中运行对应安全执行器。
+5. 回报意图、主要影响、hash、完整 message 和剩余的 ` M README.md`。
 
-staged 范围清晰时，不再请求一次“是否确认提交”。
+staged 范围且提交语义清晰时，不再请求“是否确认范围”或“是否确认意图”。
 
-## 4. staged 为空
+## 5. staged 为空
 
 用户只说“提交git”，但 staged 为空且存在多个修改文件。
 
@@ -103,7 +146,7 @@ staged 范围清晰时，不再请求一次“是否确认提交”。
 
 如果用户要求 `command-only` 且已经明确指定路径，完整命令必须先执行 `git add -- <paths>`，再依次运行 staged stat、name-status、check 和完整 diff，最后调用安全脚本；路径未明确时先询问，不输出提交命令。
 
-## 5. 提交失败
+## 6. 提交失败
 
 当 hook、权限或 Git 状态导致 `git commit` 返回非零退出码时：
 
