@@ -1,4 +1,4 @@
 interface:
   display_name: "Git 提交助手"
-  short_description: "推断改动意图与影响，并跨平台安全生成或执行 Git 提交"
-  default_prompt: "Use $git-commit-helper to infer the intent and impact of staged changes, then safely generate or execute a Conventional Commit in the repository's native Git environment."
+  short_description: "根据改动生成简洁的 Git 提交消息，按明确请求提供命令或提交"
+  default_prompt: "Use $git-commit-helper to write a concise commit message for the current changes."

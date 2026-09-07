@@ -8,17 +8,18 @@
 
 ### 简介
 
-Git Commit Helper 是一个面向 Codex 与其他兼容 Agent 的跨平台本地技能，用于根据 Git 改动还原改动目的与影响，再生成、审阅或执行结构清晰的 commit。它优先分析暂存区，遵循仓库已有的提交风格，并在没有明确风格时采用 Conventional Commits。
+Git Commit Helper 是一个面向 Codex 与其他兼容 Agent 的跨平台本地技能，根据 Git 改动与已有上下文生成或审阅简洁的提交消息。用户明确要求时，也可提供提交命令或执行普通 commit。它优先使用暂存区范围，遵循已有提交风格，默认采用 Conventional Commits。
 
 本技能支持 Windows PowerShell、WSL、Linux 与 macOS，并在所有受支持环境中严格隔离 staged 与 unstaged 改动。
 
 ### 功能亮点
 
 - **暂存区优先**：提交说明只描述已确认的改动范围；意图调查使用 index/HEAD 安全视图，同一文件中的未暂存改动不会混入目标 commit。
-- **意图优先**：结合用户上下文、测试、调用关系、契约与相关历史，先回答“为什么改、行为如何变化、会影响谁”，避免把 diff 改写成文件清单。
-- **零交互优先**：证据支持唯一合理解释时直接继续；只有多个解释会改变提交语义时，才询问一个最小必要问题。
-- **遵循仓库风格**：先参考近期提交；没有稳定惯例时，使用 `type(scope): subject` 风格。
-- **三种请求模式**：可只生成 message、只生成安全命令，或检查后直接执行 commit。
+- **按需读取**：复用已有上下文和未变化的 diff，信息不足时才补读相关内容；不固定调查调用链、历史或生成意图简报。
+- **专注消息生成**：不主动运行或建议测试、构建、lint、静态检查或代码审查；不附加重复读取和验收流程。
+- **减少确认**：范围与结果清楚时直接继续；只有范围或无法保守表述的语义不明确时，才询问一个具体问题。
+- **遵循仓库风格**：复用已知规范，必要时才参考少量近期标题；小改动可只写一行消息。
+- **三种请求模式**：可只生成 message、只生成安全命令，或按明确请求执行 commit。
 - **双原生执行器**：Windows 使用 PowerShell，WSL/Linux/macOS 使用 Bash；两者共享独立 index 快照、tree 校验、reflog 标记和并发保护。
 - **跨 shell UTF-8 安全**：PowerShell 通过 Base64，Bash 通过 quoted heredoc、message 文件或 Base64 安全传递多行与非 ASCII message。
 - **WSL 环境隔离**：检查、hooks、临时 index 和 commit 始终在同一个 WSL 发行版内完成，不混用 Windows Git。
@@ -31,7 +32,7 @@ Git Commit Helper 是一个面向 Codex 与其他兼容 Agent 的跨平台本地
 | --- | --- | --- |
 | `message-only` | “写一个 commit message” | 只返回建议的 message，不修改 Git 状态 |
 | `command-only` | “生成提交命令” | 范围明确后返回完整安全命令，不执行 |
-| `execute-mode` | “帮我提交 Git” | 核对范围与状态后执行普通 commit |
+| `execute-mode` | “帮我提交 Git” | 范围明确后调用脚本执行普通 commit |
 
 ### 环境要求
 
@@ -41,7 +42,7 @@ Git Commit Helper 是一个面向 Codex 与其他兼容 Agent 的跨平台本地
 | WSL / Linux | `scripts/commit.sh` | Bash、Git、`iconv`、`base64` 与常见 POSIX 工具 |
 | macOS | `scripts/commit.sh` | 系统 Bash 3.2+、Git、`iconv`、`base64` 与常见 POSIX 工具 |
 
-还需要支持本地技能发现的 Codex 或兼容 Agent 环境。目标仓库的状态检查、测试、临时文件、hooks 和 commit 必须使用同一个 Git 运行环境。
+还需要支持本地技能发现的 Codex 或兼容 Agent 环境。读取、暂存、临时文件、hooks 和 commit 使用目标仓库所属的同一个 Git 运行环境。
 
 ### 安装
 
@@ -92,10 +93,12 @@ test -f "$skill_root/scripts/commit.sh"
 ```
 
 ```text
-使用 $git-commit-helper，检查并提交当前 staged 改动。
+使用 $git-commit-helper，提交当前 staged 改动。
 ```
 
-技能会先读取仓库状态与改动范围，再通过 index/HEAD 安全视图有界检查测试、调用关系、契约或相关历史，以推断目的和影响。证据支持唯一提交语义时直接继续；仅当多个合理解释会改变 `type`、`subject`、提交范围或影响/风险判断时，才询问一个具体问题。若暂存区为空或路径范围不明确，执行模式会要求先确认范围，不会默认运行 `git add .`。
+已有 diff 或待润色消息足够时直接生成文本，不必访问仓库。需要读取本地改动时，仅补充缺少的信息；不例行执行 stat、name-status、check 或反复通读 diff。范围与结果清楚时直接继续，只有范围或无法保守表述的语义确实不明确时才询问。暂存区为空时沿用用户已指定的路径或全部范围；没有范围授权时才请求选择，不默认运行 `git add .`。
+
+本技能不承担代码验收。用户另外要求的验证和仓库明确规定的要求独立处理，不因调用本技能而重跑；仓库 hooks 按原配置执行。脚本的 Git 事务保护和提交结果回读仍然保留，Agent 无需在调用前后重复这些步骤。
 
 #### 直接调用脚本
 
@@ -136,7 +139,7 @@ COMMIT_MESSAGE
 
 ### 安全模型
 
-- 不默认执行 `git add .`。只有用户明确指定路径或全部范围时，Agent 工作流才会逐路径暂存并重新检查。
+- 不默认执行 `git add .`。沿用用户已明确指定的路径或全部范围，使用显式路径暂存；同样的内容不因暂存再读一遍。
 - 当前平台执行器在仓库外创建唯一临时目录，并通过 `GIT_INDEX_FILE` 使用真实 index 的独立快照。
 - 在 commit 前以 `git write-tree` 记录预期 tree，并在 commit 后核对实际 tree；若 hook 使两者不一致，执行器会在安全条件满足时受保护地恢复原引用，或在状态不确定时停止并要求人工检查。
 - 使用唯一 `GIT_REFLOG_ACTION` 识别本次创建的 commit，并检查 HEAD 是否发生并发移动。
@@ -164,9 +167,9 @@ git-commit-helper/
 ```
 
 - [.gitattributes](./.gitattributes)：强制 Bash 脚本使用 LF，避免 Windows checkout 破坏 WSL 执行
-- [SKILL.md](./SKILL.md)：Agent 执行流程与硬性边界
+- [SKILL.md](./SKILL.md)：消息生成、按需读取与请求模式
 - [examples.md](./examples.md)：常见 staged、unstaged 与混合状态示例
-- [reference.md](./reference.md)：类型、scope、风险与验证参考
+- [reference.md](./reference.md)：消息类型与措辞示例
 - [scripts/commit.ps1](./scripts/commit.ps1)：Windows PowerShell 提交执行器
 - [scripts/commit.sh](./scripts/commit.sh)：WSL/Linux/macOS Bash 提交执行器
 - [tests/test_commit_sh.sh](./tests/test_commit_sh.sh)：POSIX 执行器的跨环境回归测试
@@ -176,7 +179,7 @@ git-commit-helper/
 - 只处理普通 commit，不执行 push、merge、rebase 或 amend。
 - 发现冲突，或 merge、rebase、cherry-pick、revert 正在进行时，会停止普通提交流程。
 - staged 为空且范围不明确时，需要用户选择路径；不会猜测要提交的文件。
-- 默认从证据推断改动意图，不要求用户复述任务；只有多个合理解释会改变提交语义时才请求最小必要信息。
+- 根据已有证据写消息，不要求用户复述任务；多个主题可建议拆分，但尊重用户明确要求一起提交的选择。
 - hooks 可以执行，但如果 hook 改变了预期 tree 或造成状态不确定，当前平台执行器会拒绝把结果当作安全完成。
 - 清理失败或 HEAD 状态不明确时，请按错误信息检查仓库；看到 `Do not retry commit` 时不要重复运行。
 
@@ -186,17 +189,18 @@ git-commit-helper/
 
 ### Overview
 
-Git Commit Helper is a cross-platform local skill for Codex and other compatible agents. It reconstructs the purpose and impact of the current changes before generating, reviewing, or executing a well-scoped commit. It analyzes the staging area first, follows the repository's existing commit style, and falls back to Conventional Commits when no clear convention exists.
+Git Commit Helper is a cross-platform local skill for Codex and other compatible agents. It generates or reviews concise commit messages from Git changes and existing context. It provides commands or executes ordinary commits only when explicitly requested. It prefers the staged scope, follows known repository conventions, and defaults to Conventional Commits.
 
 The skill supports Windows PowerShell, WSL, Linux, and macOS while keeping staged and unstaged changes strictly separated.
 
 ### Highlights
 
 - **Staged-first analysis**: The commit message describes only the confirmed scope; intent research uses index/HEAD-safe views so unstaged edits in the same file stay out of the intended commit.
-- **Intent-first analysis**: User context, tests, callers, contracts, and relevant history establish why the change exists, how behavior changes, and who is affected instead of merely paraphrasing the diff.
-- **Low-interaction inference**: The skill proceeds when evidence supports one commit meaning and asks one minimal question only when competing interpretations would materially change it.
-- **Repository-aware style**: Recent commits are preferred as the style guide; otherwise the skill uses `type(scope): subject`.
-- **Three request modes**: Generate only a message, generate a safe command without running it, or verify and execute a commit.
+- **On-demand reading**: Reuses existing context and unchanged diffs, reading related content only when needed; no routine caller/history investigation or fixed intent brief.
+- **Message-focused scope**: Does not proactively run or recommend tests, builds, lint, static analysis, or code reviews, and adds no repeated-reading or acceptance workflow.
+- **Fewer confirmations**: Proceeds when scope and behavior are clear; asks a specific question only for unclear scope or material ambiguity that cannot be expressed conservatively.
+- **Repository-aware style**: Reuses known conventions and consults a few recent titles only when needed; a small change can use a one-line message.
+- **Three request modes**: Generate only a message, generate a safe command without running it, or execute a commit when explicitly requested.
 - **Two native executors**: Windows uses PowerShell; WSL/Linux/macOS use Bash. Both enforce the same isolated-index, tree, reflog, and concurrency contract.
 - **Cross-shell UTF-8 safety**: PowerShell uses Base64, while Bash accepts a quoted heredoc, a message file, or Base64 for multiline and non-ASCII text.
 - **WSL runtime isolation**: Inspection, hooks, the temporary index, and commit stay inside one WSL distribution instead of mixing Windows Git with WSL Git.
@@ -209,7 +213,7 @@ See [SKILL.md](./SKILL.md) for the complete behavior, [examples.md](./examples.m
 | --- | --- | --- |
 | `message-only` | “Write a commit message” | Returns a suggested message without changing Git state |
 | `command-only` | “Generate the commit command” | Returns a complete safe command once scope is clear, without running it |
-| `execute-mode` | “Commit these changes” | Verifies scope and repository state, then creates an ordinary commit |
+| `execute-mode` | “Commit these changes” | Calls the executor to create an ordinary commit once scope is clear |
 
 ### Requirements
 
@@ -219,7 +223,7 @@ See [SKILL.md](./SKILL.md) for the complete behavior, [examples.md](./examples.m
 | WSL / Linux | `scripts/commit.sh` | Bash, Git, `iconv`, `base64`, and common POSIX tools |
 | macOS | `scripts/commit.sh` | System Bash 3.2+, Git, `iconv`, `base64`, and common POSIX tools |
 
-Codex or another compatible agent environment must also support local skill discovery. Repository inspection, tests, temporary files, hooks, and commit must all use the same Git runtime.
+Codex or another compatible agent environment must also support local skill discovery. Reading, staging, temporary files, hooks, and commit use the target repository's Git runtime.
 
 ### Installation
 
@@ -270,10 +274,12 @@ Use $git-commit-helper to generate a safe commit command, but do not run it.
 ```
 
 ```text
-Use $git-commit-helper to verify and commit the currently staged changes.
+Use $git-commit-helper to commit the currently staged changes.
 ```
 
-The skill inspects repository state and scope first, then uses index/HEAD-safe views for a bounded review of tests, callers, contracts, or relevant history to infer purpose and impact. It proceeds when the evidence supports one commit meaning and asks a specific question only when competing interpretations would change the type, subject, scope, or impact/risk statement. If nothing is staged or the path scope is ambiguous, execute mode asks for confirmation instead of defaulting to `git add .`.
+When a supplied diff or message is sufficient, the skill generates text without accessing the repository. When local changes must be read, it obtains only missing information, with no routine stat/name-status/check commands or repeated full diff reads. It proceeds when scope and behavior are clear, asking only when scope is unclear or a material ambiguity cannot be expressed conservatively. With an empty staging area, it uses paths or the complete scope already selected by the user; otherwise it asks for scope instead of defaulting to `git add .`.
+
+The skill does not own code acceptance. Separately requested verification and explicit repository requirements remain separate work and are not rerun merely because this skill is invoked; configured Git hooks still run. The scripts retain Git transaction protection and result readback, which the agent does not duplicate before or after invocation.
 
 #### Invoke an executor directly
 
@@ -314,7 +320,7 @@ The point where an executor copies the index early in guarded execution defines 
 
 ### Safety model
 
-- It does not default to `git add .`. The agent workflow stages only explicit paths, followed by a fresh review, when the user has clearly selected paths or the complete scope.
+- It does not default to `git add .`. It stages explicit paths within the user's already selected scope, without rereading identical content merely because it was staged.
 - The selected executor creates a unique temporary directory outside the repository and uses `GIT_INDEX_FILE` with an isolated copy of the real index.
 - Before committing, `git write-tree` records the expected tree and the resulting commit tree is checked afterward. If a hook makes them differ, the executor performs a guarded ref restore when safe or stops for manual inspection when state is uncertain.
 - A unique `GIT_REFLOG_ACTION` identifies the commit created by the invocation, while HEAD movement is checked for concurrent changes.
@@ -342,9 +348,9 @@ git-commit-helper/
 ```
 
 - [.gitattributes](./.gitattributes): keeps Bash scripts on LF so Windows checkouts remain runnable in WSL
-- [SKILL.md](./SKILL.md): agent workflow and hard boundaries
+- [SKILL.md](./SKILL.md): message generation, on-demand reading, and request modes
 - [examples.md](./examples.md): common staged, unstaged, and mixed-state examples
-- [reference.md](./reference.md): type, scope, risk, and verification guidance
+- [reference.md](./reference.md): message types and wording examples
 - [scripts/commit.ps1](./scripts/commit.ps1): Windows PowerShell executor
 - [scripts/commit.sh](./scripts/commit.sh): WSL/Linux/macOS Bash executor
 - [tests/test_commit_sh.sh](./tests/test_commit_sh.sh): cross-environment regression tests for the POSIX executor
@@ -354,6 +360,6 @@ git-commit-helper/
 - The skill handles ordinary commits only; it does not push, merge, rebase, or amend.
 - It stops the ordinary commit flow when conflicts exist or a merge, rebase, cherry-pick, or revert is in progress.
 - If the staging area is empty and scope is unclear, the user must select paths; the skill does not guess which files belong in the commit.
-- It infers change intent from evidence instead of asking the user to restate the task; it requests minimal information only when multiple reasonable interpretations would change the commit meaning.
+- It writes messages from existing evidence instead of asking the user to restate the task; it may suggest splitting multiple topics but respects an explicit request to commit them together.
 - Hooks may run, but if a hook changes the expected tree or leaves repository state uncertain, the selected executor refuses to treat the result as safely completed.
 - If cleanup fails or HEAD state is unclear, inspect the repository as instructed by the error. Never rerun the command after a `Do not retry commit` warning.
