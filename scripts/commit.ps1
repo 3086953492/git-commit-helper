@@ -374,8 +374,20 @@ try {
     }
 }
 finally {
-    [Environment]::SetEnvironmentVariable("GIT_INDEX_FILE", $previousGitIndexFile, "Process")
-    [Environment]::SetEnvironmentVariable("GIT_REFLOG_ACTION", $previousReflogAction, "Process")
+    # PowerShell can convert $null to an empty string when calling the .NET setter.
+    # Remove absent variables explicitly so Git does not inherit an empty index path.
+    if ($null -eq $previousGitIndexFile) {
+        Remove-Item -LiteralPath Env:GIT_INDEX_FILE -ErrorAction SilentlyContinue
+    }
+    else {
+        [Environment]::SetEnvironmentVariable("GIT_INDEX_FILE", $previousGitIndexFile, "Process")
+    }
+    if ($null -eq $previousReflogAction) {
+        Remove-Item -LiteralPath Env:GIT_REFLOG_ACTION -ErrorAction SilentlyContinue
+    }
+    else {
+        [Environment]::SetEnvironmentVariable("GIT_REFLOG_ACTION", $previousReflogAction, "Process")
+    }
 
     if ($tempWorkDirectory -and (Test-Path -LiteralPath $tempWorkDirectory)) {
         try {
