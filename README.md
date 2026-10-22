@@ -44,7 +44,7 @@ Git Commit Helper 是一个面向 Codex 与其他兼容 Agent 的跨平台本地
 
 还需要支持本地技能发现的 Codex 或兼容 Agent 环境。读取、暂存、临时文件、hooks 和 commit 使用目标仓库所属的同一个 Git 运行环境。
 
-目标仓库接入 commitlint 后，还需要与其依赖版本兼容的 Node.js 和包管理器。非 Node 仓库会先说明新增开发工具链；用户可跳过接入并获得未经校验的消息。技能仓库本身无需安装 npm 开发依赖。
+目标仓库接入 commitlint 后，还需要与其依赖版本兼容的 Node.js 和包管理器。非 Node 仓库会先说明新增开发工具链；用户可跳过接入并获得未经校验的消息。安装和使用技能本身不需要安装本仓库的 npm 开发依赖；维护本仓库时见下方说明。
 
 ### 安装
 
@@ -141,6 +141,25 @@ COMMIT_MESSAGE
 
 两个执行器都以受保护执行早期复制 index 的时点定义 staged 快照；POSIX 执行器会在读取可能阻塞的 message 之前完成复制。只有实际 commit tree 与该快照一致时，才会把提交视为安全完成。message 的内容与提交范围仍应在调用前完成审阅。
 
+### 维护本仓库
+
+使用 Node.js 22.12.0+ 与 npm，在仓库根目录安装开发依赖：
+
+```sh
+npm ci
+```
+
+安装时 `prepare` 会配置 Husky，之后普通提交和本仓库的提交执行器都会通过 `commit-msg` hook 调用 commitlint。规则继承 `@commitlint/config-conventional`，关闭描述大小写限制，以支持中文及 Git、WSL 等技术名词。实际规则见 [commitlint.config.cjs](./commitlint.config.cjs)。
+
+手动检查消息文件或提交范围：
+
+```sh
+npm run commitlint -- --edit path/to/message.txt
+npm run commitlint -- --from HEAD~1 --to HEAD --verbose
+```
+
+如果需要重新安装本地 hook，运行 `npm run prepare`。Windows 与 WSL 分别在各自的 Node.js/Git 环境中安装依赖。
+
 ### 安全模型
 
 - 不默认执行 `git add .`。沿用用户已明确指定的路径或全部范围，使用显式路径暂存；同样的内容不因暂存再读一遍。
@@ -157,6 +176,12 @@ COMMIT_MESSAGE
 ```text
 git-commit-helper/
 ├── .gitattributes
+├── .gitignore
+├── .husky/
+│   └── commit-msg
+├── commitlint.config.cjs
+├── package.json
+├── package-lock.json
 ├── README.md
 ├── SKILL.md
 ├── examples.md
@@ -232,7 +257,7 @@ See [SKILL.md](./SKILL.md) for the complete behavior, [examples.md](./examples.m
 
 Codex or another compatible agent environment must also support local skill discovery. Reading, staging, temporary files, hooks, and commit use the target repository's Git runtime.
 
-Targets using commitlint also need Node.js and a package manager compatible with their dependencies. For non-Node repositories, onboarding explains the added development toolchain first. Users may skip setup and receive unvalidated messages. This skill repository itself requires no npm development dependencies.
+Targets using commitlint also need Node.js and a package manager compatible with their dependencies. For non-Node repositories, onboarding explains the added development toolchain first. Users may skip setup and receive unvalidated messages. Installing or using the skill does not require this repository's npm development dependencies; contributors should follow the maintenance instructions below.
 
 ### Installation
 
@@ -329,6 +354,25 @@ If Codex runs on Windows while WSL Git owns the target repository, use the bridg
 
 The point where an executor copies the index early in guarded execution defines the staged snapshot; the POSIX executor performs that copy before reading potentially blocking message input. A commit is treated as safely completed only when its tree matches that snapshot. Review the message and intended scope before invoking it.
 
+### Maintaining this repository
+
+Use Node.js 22.12.0+ and npm to install development dependencies from the repository root:
+
+```sh
+npm ci
+```
+
+The `prepare` script configures Husky during installation. Ordinary commits and this repository's commit executors then run commitlint through the `commit-msg` hook. Rules extend `@commitlint/config-conventional`, with subject case unrestricted to support Chinese and technical names such as Git and WSL. See [commitlint.config.cjs](./commitlint.config.cjs) for the actual configuration.
+
+To check a message file or commit range manually:
+
+```sh
+npm run commitlint -- --edit path/to/message.txt
+npm run commitlint -- --from HEAD~1 --to HEAD --verbose
+```
+
+Run `npm run prepare` to reinstall local hooks when needed. Install dependencies separately in the respective Node.js/Git environments when working across Windows and WSL.
+
 ### Safety model
 
 - It does not default to `git add .`. It stages explicit paths within the user's already selected scope, without rereading identical content merely because it was staged.
@@ -345,6 +389,12 @@ The point where an executor copies the index early in guarded execution defines 
 ```text
 git-commit-helper/
 ├── .gitattributes
+├── .gitignore
+├── .husky/
+│   └── commit-msg
+├── commitlint.config.cjs
+├── package.json
+├── package-lock.json
 ├── README.md
 ├── SKILL.md
 ├── examples.md

@@ -1,0 +1,16 @@
+{
+  "name": "git-commit-helper",
+  "private": true,
+  "scripts": {
+    "prepare": "husky",
+    "commitlint": "commitlint"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "husky": "^9.1.7"
+  }
+}
