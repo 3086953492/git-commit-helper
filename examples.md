@@ -8,7 +8,7 @@
 
 > 根据当前改动写一个 commit message
 
-行为：直接使用已有 diff；缺少时才读取目标改动。输出 message，不运行测试、构建、`git add` 或 `git commit`。
+行为：直接使用已有 diff；缺少时才读取目标改动。目标仓库明确时先处理 commitlint 接入并校验候选消息，再输出 message；不运行测试、构建、`git add` 或 `git commit`。没有目标仓库的纯文本请求可直接输出，并注明未经 commitlint 校验。
 
 ```text
 fix(订单状态): 兼容格式不一致的状态值
@@ -22,7 +22,7 @@ fix(订单状态): 兼容格式不一致的状态值
 
 > 给我完整提交命令
 
-行为：输出当前 Git 运行环境可执行的完整命令但不执行。不得把一个环境检查出的 staged 范围交给另一个环境提交。
+行为：先在目标 Git 环境校验候选消息，再输出该环境可执行的完整命令，不执行暂存或提交。以下示例中的消息是假设已通过目标仓库校验的文本；实际生成时使用本次校验通过的消息。不得把一个环境检查出的 staged 范围交给另一个环境提交。
 
 ### Windows PowerShell
 
@@ -92,7 +92,7 @@ if ($LASTEXITCODE -ne 0) {
 
 仓库状态：`src/order.ts` 已 staged，`README.md` 只有 unstaged 改动。
 
-行为：根据 `src/order.ts` 的 staged diff 写消息，然后在仓库所属 Git 环境中运行对应执行器。已有 diff 且范围未变时直接复用，不额外运行测试或复检命令，不把 `README.md` 加入 staged。依据脚本输出回报 hash、message 和剩余的 ` M README.md`。
+行为：根据 `src/order.ts` 的 staged diff 写消息，使用目标仓库的 commitlint 校验后，在仓库所属 Git 环境中运行对应执行器；实际提交还会触发 `commit-msg` hook。已有 diff 且范围未变时直接复用，不额外运行测试或复检命令，不把 `README.md` 加入 staged。依据脚本输出回报 hash、message 和剩余的 ` M README.md`。
 
 ## 4. staged 为空
 
@@ -105,3 +105,13 @@ if ($LASTEXITCODE -ne 0) {
 ## 5. 提交失败
 
 报告脚本给出的实际错误和提交状态，不把旧 HEAD 当成新提交，也不在没有证据时声称已回滚。输出为 `Do not retry commit` 时，可能已创建提交，先定位状态，不自动重试。仅为处理具体错误补充必要信息，不将失败扩展成代码验收或修复任务。
+
+## 6. 首次接入或跳过 commitlint
+
+目标仓库只有业务文件，没有 commitlint。说明将新增的 Node 开发依赖、配置和 hook，并询问是否接入。用户同意后按 [接入参考](references/commitlint.md) 配置，接入文件保持未暂存，随后校验当前候选消息。
+
+用户选择跳过时继续生成，注明“未经 commitlint 校验”，本会话后续调用不再重复询问。不因用户授权提交业务改动就默认获得添加工具链的授权。
+
+## 7. 已有自定义规则或 hook
+
+目标仓库配置仅允许特定 scope，且已有执行其他检查的 `commit-msg`。复用已有规则和 hook 链路；候选消息的 scope 被拒绝时按报错修正，再校验。不得关闭 scope 规则或覆盖已有 hook。配置或依赖加载失败时报告环境阻塞，不能声称消息通过。

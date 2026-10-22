@@ -8,7 +8,7 @@
 
 ### 简介
 
-Git Commit Helper 是一个面向 Codex 与其他兼容 Agent 的跨平台本地技能，根据 Git 改动与已有上下文生成或审阅简洁的提交消息。用户明确要求时，也可提供提交命令或执行普通 commit。它优先使用暂存区范围，遵循已有提交风格，默认采用 Conventional Commits。
+Git Commit Helper 是一个面向 Codex 与其他兼容 Agent 的跨平台本地技能，根据 Git 改动与已有上下文生成或审阅简洁的提交消息。用户明确要求时，也可提供提交命令或执行普通 commit。它优先使用暂存区范围，引导目标仓库接入 commitlint，由实际配置约束消息结构。
 
 本技能支持 Windows PowerShell、WSL、Linux 与 macOS，并在所有受支持环境中严格隔离 staged 与 unstaged 改动。
 
@@ -16,9 +16,9 @@ Git Commit Helper 是一个面向 Codex 与其他兼容 Agent 的跨平台本地
 
 - **暂存区优先**：提交说明只描述已确认的改动范围；意图调查使用 index/HEAD 安全视图，同一文件中的未暂存改动不会混入目标 commit。
 - **按需读取**：复用已有上下文和未变化的 diff，信息不足时才补读相关内容；不固定调查调用链、历史或生成意图简报。
-- **专注消息生成**：不主动运行或建议测试、构建、lint、静态检查或代码审查；不附加重复读取和验收流程。
-- **减少确认**：范围与结果清楚时直接继续；只有范围或无法保守表述的语义不明确时，才询问一个具体问题。
-- **遵循仓库风格**：复用已知规范，必要时才参考少量近期标题；小改动可只写一行消息。
+- **消息校验**：生成完成后调用目标仓库本地 commitlint，实际提交再由 `commit-msg` hook 拦截；不承担测试、构建、代码 lint 或代码审查。
+- **按需接入**：目标仓库没有 commitlint 时首次引导，用户可跳过；同一会话不重复询问已拒绝的接入。
+- **遵循仓库规则**：以实际生效的 commitlint 配置为结构规则来源，保留准确、简洁的消息内容要求。
 - **三种请求模式**：可只生成 message、只生成安全命令，或按明确请求执行 commit。
 - **双原生执行器**：Windows 使用 PowerShell，WSL/Linux/macOS 使用 Bash；两者共享独立 index 快照、tree 校验、reflog 标记和并发保护。
 - **跨 shell UTF-8 安全**：PowerShell 通过 Base64，Bash 通过 quoted heredoc、message 文件或 Base64 安全传递多行与非 ASCII message。
@@ -30,8 +30,8 @@ Git Commit Helper 是一个面向 Codex 与其他兼容 Agent 的跨平台本地
 
 | 模式 | 典型请求 | 行为 |
 | --- | --- | --- |
-| `message-only` | “写一个 commit message” | 只返回建议的 message，不修改 Git 状态 |
-| `command-only` | “生成提交命令” | 范围明确后返回完整安全命令，不执行 |
+| `message-only` | “写一个 commit message” | 校验后返回建议的 message，不暂存或提交 |
+| `command-only` | “生成提交命令” | 校验消息后返回完整安全命令，不执行暂存或提交 |
 | `execute-mode` | “帮我提交 Git” | 范围明确后调用脚本执行普通 commit |
 
 ### 环境要求
@@ -43,6 +43,8 @@ Git Commit Helper 是一个面向 Codex 与其他兼容 Agent 的跨平台本地
 | macOS | `scripts/commit.sh` | 系统 Bash 3.2+、Git、`iconv`、`base64` 与常见 POSIX 工具 |
 
 还需要支持本地技能发现的 Codex 或兼容 Agent 环境。读取、暂存、临时文件、hooks 和 commit 使用目标仓库所属的同一个 Git 运行环境。
+
+目标仓库接入 commitlint 后，还需要与其依赖版本兼容的 Node.js 和包管理器。非 Node 仓库会先说明新增开发工具链；用户可跳过接入并获得未经校验的消息。技能仓库本身无需安装 npm 开发依赖。
 
 ### 安装
 
@@ -96,13 +98,15 @@ test -f "$skill_root/scripts/commit.sh"
 使用 $git-commit-helper，提交当前 staged 改动。
 ```
 
-已有 diff 或待润色消息足够时直接生成文本，不必访问仓库。需要读取本地改动时，仅补充缺少的信息；不例行执行 stat、name-status、check 或反复通读 diff。范围与结果清楚时直接继续，只有范围或无法保守表述的语义确实不明确时才询问。暂存区为空时沿用用户已指定的路径或全部范围；没有范围授权时才请求选择，不默认运行 `git add .`。
+已有 diff 或待润色消息足够时直接复用，不重复读取改动。目标仓库明确时，首次检查 commitlint 接入情况，之后复用已知结果；三种模式都会在返回最终消息、命令或执行提交前校验候选消息。缺少配置时先引导接入，用户可跳过；没有目标仓库的纯文本请求不强制接入，并注明未经校验。具体步骤见 [commitlint 接入与校验](./references/commitlint.md)。
 
-本技能不承担代码验收。用户另外要求的验证和仓库明确规定的要求独立处理，不因调用本技能而重跑；仓库 hooks 按原配置执行。脚本的 Git 事务保护和提交结果回读仍然保留，Agent 无需在调用前后重复这些步骤。
+需要读取本地改动时，仅补充缺少的信息；不例行执行 stat、name-status、check 或反复通读 diff。范围与结果清楚时直接继续。暂存区为空时沿用用户已指定的路径或全部范围；没有范围授权时才请求选择，不默认运行 `git add .`。同意接入 commitlint 不会自动暂存新增配置。
+
+本技能只承担消息校验，不承担代码验收。用户另外要求的验证和仓库明确规定的要求独立处理，不因调用本技能而重跑；已有规则和 hooks 保留。脚本的 Git 事务保护和提交结果回读仍然保留，Agent 无需在调用前后重复这些步骤。
 
 #### 直接调用脚本
 
-当 commit message 已确定时，在目标仓库所属的 Git 环境中调用对应执行器。
+当 commit message 已确定并按目标仓库规则完成前置校验时，在目标仓库所属的 Git 环境中调用对应执行器。直接调用脚本只执行已有 hooks，不负责安装 commitlint 或单独执行前置校验。
 
 Windows PowerShell：
 
@@ -157,6 +161,8 @@ git-commit-helper/
 ├── SKILL.md
 ├── examples.md
 ├── reference.md
+├── references/
+│   └── commitlint.md
 ├── agents/
 │   └── openai.yaml
 ├── scripts/
@@ -170,6 +176,7 @@ git-commit-helper/
 - [SKILL.md](./SKILL.md)：消息生成、按需读取与请求模式
 - [examples.md](./examples.md)：常见 staged、unstaged 与混合状态示例
 - [reference.md](./reference.md)：消息类型与措辞示例
+- [references/commitlint.md](./references/commitlint.md)：目标仓库的工具接入、前置校验与 hook 兼容
 - [scripts/commit.ps1](./scripts/commit.ps1)：Windows PowerShell 提交执行器
 - [scripts/commit.sh](./scripts/commit.sh)：WSL/Linux/macOS Bash 提交执行器
 - [tests/test_commit_sh.sh](./tests/test_commit_sh.sh)：POSIX 执行器的跨环境回归测试
@@ -189,7 +196,7 @@ git-commit-helper/
 
 ### Overview
 
-Git Commit Helper is a cross-platform local skill for Codex and other compatible agents. It generates or reviews concise commit messages from Git changes and existing context. It provides commands or executes ordinary commits only when explicitly requested. It prefers the staged scope, follows known repository conventions, and defaults to Conventional Commits.
+Git Commit Helper is a cross-platform local skill for Codex and other compatible agents. It generates or reviews concise commit messages from Git changes and existing context. It provides commands or executes ordinary commits only when explicitly requested. It prefers the staged scope and guides target repositories through commitlint setup so their effective configuration controls message structure.
 
 The skill supports Windows PowerShell, WSL, Linux, and macOS while keeping staged and unstaged changes strictly separated.
 
@@ -197,9 +204,9 @@ The skill supports Windows PowerShell, WSL, Linux, and macOS while keeping stage
 
 - **Staged-first analysis**: The commit message describes only the confirmed scope; intent research uses index/HEAD-safe views so unstaged edits in the same file stay out of the intended commit.
 - **On-demand reading**: Reuses existing context and unchanged diffs, reading related content only when needed; no routine caller/history investigation or fixed intent brief.
-- **Message-focused scope**: Does not proactively run or recommend tests, builds, lint, static analysis, or code reviews, and adds no repeated-reading or acceptance workflow.
-- **Fewer confirmations**: Proceeds when scope and behavior are clear; asks a specific question only for unclear scope or material ambiguity that cannot be expressed conservatively.
-- **Repository-aware style**: Reuses known conventions and consults a few recent titles only when needed; a small change can use a one-line message.
+- **Message validation**: Runs the target repository's local commitlint before returning a final message or command or executing a commit; the `commit-msg` hook checks again during commits. Does not own tests, builds, code lint, or code reviews.
+- **Optional onboarding**: Offers commitlint setup when missing. Users may skip, without repeated prompts in the same conversation.
+- **Repository rules**: Uses effective commitlint configuration for message structure while retaining accurate, concise content.
 - **Three request modes**: Generate only a message, generate a safe command without running it, or execute a commit when explicitly requested.
 - **Two native executors**: Windows uses PowerShell; WSL/Linux/macOS use Bash. Both enforce the same isolated-index, tree, reflog, and concurrency contract.
 - **Cross-shell UTF-8 safety**: PowerShell uses Base64, while Bash accepts a quoted heredoc, a message file, or Base64 for multiline and non-ASCII text.
@@ -211,8 +218,8 @@ See [SKILL.md](./SKILL.md) for the complete behavior, [examples.md](./examples.m
 
 | Mode | Example request | Behavior |
 | --- | --- | --- |
-| `message-only` | “Write a commit message” | Returns a suggested message without changing Git state |
-| `command-only` | “Generate the commit command” | Returns a complete safe command once scope is clear, without running it |
+| `message-only` | “Write a commit message” | Validates and returns a suggested message without staging or committing |
+| `command-only` | “Generate the commit command” | Validates the message and returns a safe command without staging or committing |
 | `execute-mode` | “Commit these changes” | Calls the executor to create an ordinary commit once scope is clear |
 
 ### Requirements
@@ -224,6 +231,8 @@ See [SKILL.md](./SKILL.md) for the complete behavior, [examples.md](./examples.m
 | macOS | `scripts/commit.sh` | System Bash 3.2+, Git, `iconv`, `base64`, and common POSIX tools |
 
 Codex or another compatible agent environment must also support local skill discovery. Reading, staging, temporary files, hooks, and commit use the target repository's Git runtime.
+
+Targets using commitlint also need Node.js and a package manager compatible with their dependencies. For non-Node repositories, onboarding explains the added development toolchain first. Users may skip setup and receive unvalidated messages. This skill repository itself requires no npm development dependencies.
 
 ### Installation
 
@@ -277,13 +286,15 @@ Use $git-commit-helper to generate a safe commit command, but do not run it.
 Use $git-commit-helper to commit the currently staged changes.
 ```
 
-When a supplied diff or message is sufficient, the skill generates text without accessing the repository. When local changes must be read, it obtains only missing information, with no routine stat/name-status/check commands or repeated full diff reads. It proceeds when scope and behavior are clear, asking only when scope is unclear or a material ambiguity cannot be expressed conservatively. With an empty staging area, it uses paths or the complete scope already selected by the user; otherwise it asks for scope instead of defaulting to `git add .`.
+When a supplied diff or message is sufficient, the skill reuses it without rereading changes. For an identified target repository, it checks commitlint setup once and reuses that information. All three modes validate the final candidate before returning a message or command or executing a commit. Missing configuration triggers optional onboarding. Text-only requests without a target repository remain available, with an unvalidated notice. See [commitlint setup and validation](./references/commitlint.md).
 
-The skill does not own code acceptance. Separately requested verification and explicit repository requirements remain separate work and are not rerun merely because this skill is invoked; configured Git hooks still run. The scripts retain Git transaction protection and result readback, which the agent does not duplicate before or after invocation.
+When local changes must be read, the skill obtains only missing information, with no routine stat/name-status/check commands or repeated full diff reads. With an empty staging area, it uses paths or the complete scope already selected by the user; otherwise it asks for scope instead of defaulting to `git add .`. Approving commitlint setup does not automatically stage its configuration files.
+
+The skill owns message validation, not code acceptance. Separately requested verification and explicit repository requirements remain separate work and are not rerun merely because this skill is invoked. Existing rules and hook behavior are preserved. The scripts retain Git transaction protection and result readback, which the agent does not duplicate before or after invocation.
 
 #### Invoke an executor directly
 
-Once the commit message is final, invoke the executor that belongs to the target repository's Git environment.
+Once the commit message is final and has passed the target repository's validation, invoke the executor that belongs to its Git environment. Direct executor calls run existing hooks but do not install commitlint or perform a separate preliminary message check.
 
 Windows PowerShell:
 
@@ -338,6 +349,8 @@ git-commit-helper/
 ├── SKILL.md
 ├── examples.md
 ├── reference.md
+├── references/
+│   └── commitlint.md
 ├── agents/
 │   └── openai.yaml
 ├── scripts/
@@ -351,6 +364,7 @@ git-commit-helper/
 - [SKILL.md](./SKILL.md): message generation, on-demand reading, and request modes
 - [examples.md](./examples.md): common staged, unstaged, and mixed-state examples
 - [reference.md](./reference.md): message types and wording examples
+- [references/commitlint.md](./references/commitlint.md): target repository setup, preliminary message validation, and hook compatibility
 - [scripts/commit.ps1](./scripts/commit.ps1): Windows PowerShell executor
 - [scripts/commit.sh](./scripts/commit.sh): WSL/Linux/macOS Bash executor
 - [tests/test_commit_sh.sh](./tests/test_commit_sh.sh): cross-environment regression tests for the POSIX executor
